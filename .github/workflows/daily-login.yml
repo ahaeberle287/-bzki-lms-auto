@@ -1,0 +1,41 @@
+name: Täglicher BZKI-LMS Login
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Abhängigkeiten installieren
+        run: npm install playwright
+
+      - name: Chromium installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: Login-Skript ausführen
+        env:
+          LMS_USER: ${{ secrets.LMS_USER }}
+          LMS_PASS: ${{ secrets.LMS_PASS }}
+        run: node login.js
+
+      - name: Screenshots als Nachweis speichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-screenshots
+          path: |
+            *.png
+          retention-days: 14
