@@ -29,7 +29,7 @@ jobs:
         env:
           LMS_USER: ${{ secrets.LMS_USER }}
           LMS_PASS: ${{ secrets.LMS_PASS }}
-          SESSION_MINUTES: '2'
+          SESSION_MINUTES: '180'
         run: node login.js
 
       - name: Screenshots als Nachweis speichern
