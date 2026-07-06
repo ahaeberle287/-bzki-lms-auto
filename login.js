@@ -69,11 +69,82 @@ if (!LMS_USER || !LMS_PASS) {
 
     // --- Direkt zur Schulungsraum-Seite navigieren (zuverlässiger als Klick auf Nav-Link) ---
     await page.goto('https://lms.bzki.de/live', { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
-    // Bestätigungs-Screenshot
+    // Bestätigungs-Screenshot vor dem Video-Start
     await page.screenshot({ path: 'schulungsraum-erfolg.png', fullPage: true });
-    console.log('Fertig! Schulungsraum wurde betreten. Screenshot: schulungsraum-erfolg.png');
+    console.log('Schulungsraum betreten. Versuche Video zu starten...');
+
+    // --- Video starten ---
+    // Der Player (webinargeek) läuft evtl. in einem iframe. Wir versuchen beide Fälle:
+    // 1) Play-Button direkt auf der Seite
+    // 2) Play-Button innerhalb eines iframes
+    let played = false;
+    const playSelectors = [
+      'button[aria-label*="play" i]',
+      'button[aria-label*="wiedergabe" i]',
+      '[class*="play" i]',
+      'text=Bitte klicke auf das Video',
+    ];
+
+    // Versuch 1: direkt auf der Hauptseite
+    for (const sel of playSelectors) {
+      const el = await page.$(sel);
+      if (el && await el.isVisible().catch(() => false)) {
+        await el.click().catch(() => {});
+        played = true;
+        break;
+      }
+    }
+
+    // Versuch 2: in allen iframes suchen
+    if (!played) {
+      for (const frame of page.frames()) {
+        for (const sel of playSelectors) {
+          const el = await frame.$(sel).catch(() => null);
+          if (el && await el.isVisible().catch(() => false)) {
+            await el.click().catch(() => {});
+            played = true;
+            break;
+          }
+        }
+        if (played) break;
+      }
+    }
+
+    // Versuch 3: einfach in die Bildschirmmitte klicken (viele Player reagieren darauf)
+    if (!played) {
+      console.log('Kein Play-Button per Selektor gefunden, klicke stattdessen mittig auf den Videobereich.');
+      await page.mouse.click(400, 330).catch(() => {});
+    } else {
+      console.log('Play-Button geklickt.');
+    }
+
+    await page.waitForTimeout(3000);
+    await page.screenshot({ path: 'video-gestartet.png', fullPage: true });
+
+    // --- Session offen halten (Standard: 3 Stunden) ---
+    const SESSION_MINUTES = parseInt(process.env.SESSION_MINUTES || '180', 10);
+    const totalMs = SESSION_MINUTES * 60 * 1000;
+    const heartbeatMs = 5 * 60 * 1000; // alle 5 Minuten eine kleine Aktion, um Inaktivitäts-Logout zu vermeiden
+    let elapsed = 0;
+
+    console.log(`Halte Sitzung ${SESSION_MINUTES} Minuten offen...`);
+
+    while (elapsed < totalMs) {
+      const wait = Math.min(heartbeatMs, totalMs - elapsed);
+      await page.waitForTimeout(wait);
+      elapsed += wait;
+
+      // Kleine "Lebenszeichen"-Aktion: Mausbewegung + minimaler Scroll
+      await page.mouse.move(100 + Math.random() * 300, 100 + Math.random() * 300).catch(() => {});
+      await page.mouse.wheel(0, 1).catch(() => {});
+
+      console.log(`... ${Math.round(elapsed / 60000)} von ${SESSION_MINUTES} Minuten vergangen`);
+    }
+
+    await page.screenshot({ path: 'session-ende.png', fullPage: true });
+    console.log('Fertig! Sitzungsdauer erreicht, Skript beendet sich.');
 
   } catch (err) {
     console.error('FEHLER:', err.message);
