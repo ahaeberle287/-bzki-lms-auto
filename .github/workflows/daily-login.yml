@@ -2,7 +2,11 @@ name: Täglicher BZKI-LMS Login
 
 on:
   schedule:
-    - cron: '0 7 * * 1-5'
+    # 7:30 UTC bedeutet:
+    # Im Sommer (MESZ) = 9:30 Uhr Start (läuft bis 12:30 Uhr)
+    # Im Winter (MEZ) = 8:30 Uhr Start (läuft bis 11:30 Uhr)
+    # So bist du IMMER sicher im Kernzeitfenster.
+    - cron: '30 7 * * 1-5'
   workflow_dispatch: {}
 
 jobs:
@@ -29,7 +33,7 @@ jobs:
         env:
           LMS_USER: ${{ secrets.LMS_USER }}
           LMS_PASS: ${{ secrets.LMS_PASS }}
-          SESSION_MINUTES: '180'
+          SESSION_MINUTES: '180' # Bleibt bei 3 Stunden
         run: node login.js
 
       - name: Screenshots als Nachweis speichern
