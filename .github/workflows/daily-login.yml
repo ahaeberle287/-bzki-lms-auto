@@ -6,7 +6,8 @@ on:
     # Im Sommer (MESZ) = 9:30 Uhr Start (läuft bis 12:30 Uhr)
     # Im Winter (MEZ) = 8:30 Uhr Start (läuft bis 11:30 Uhr)
     # So bist du IMMER sicher im Kernzeitfenster.
-    - cron: '30 7 * * 1-5'
+    - cron: '0 6 * * 1-5'   # ~8 Uhr Sommer / 7 Uhr Winter - primaerer Versuch
+    - cron: '0 9 * * 1-5'   # ~11 Uhr Sommer / 10 Uhr Winter - Sicherheitsnetz
   workflow_dispatch: {}
 
 jobs:
