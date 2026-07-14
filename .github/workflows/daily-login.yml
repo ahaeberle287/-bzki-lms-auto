@@ -1,41 +1,84 @@
 name: Täglicher BZKI-LMS Login
-
 on:
   schedule:
-    # 7:30 UTC bedeutet:
-    # Im Sommer (MESZ) = 9:30 Uhr Start (läuft bis 12:30 Uhr)
-    # Im Winter (MEZ) = 8:30 Uhr Start (läuft bis 11:30 Uhr)
-    # So bist du IMMER sicher im Kernzeitfenster.
-    - cron: '0 6 * * 1-5'   # ~8 Uhr Sommer / 7 Uhr Winter - primaerer Versuch
-    - cron: '0 9 * * 1-5'   # ~11 Uhr Sommer / 10 Uhr Winter - Sicherheitsnetz
+    # Mehrere Versuche über den Vormittag verteilt, da GitHub Actions
+    # Scheduled-Runs teils stark verspätet (siehe Praxis: bis zu 9h Delay).
+    # Uhrzeiten in UTC, Kommentar zeigt CEST (Sommer) / CET (Winter):
+    - cron: '0 5 * * 1-5'   # 7 Uhr Sommer / 6 Uhr Winter
+    - cron: '0 6 * * 1-5'   # 8 Uhr Sommer / 7 Uhr Winter
+    - cron: '30 6 * * 1-5'  # 8:30 / 7:30
+    - cron: '0 7 * * 1-5'   # 9 Uhr / 8 Uhr
+    - cron: '0 8 * * 1-5'   # 10 Uhr / 9 Uhr
+    - cron: '0 9 * * 1-5'   # 11 Uhr / 10 Uhr
+    - cron: '0 10 * * 1-5'  # 12 Uhr / 11 Uhr
+    - cron: '0 11 * * 1-5'  # 13 Uhr / 12 Uhr (letzter sinnvoller Versuch)
   workflow_dispatch: {}
+
+concurrency:
+  group: bzki-lms-login
+  cancel-in-progress: false   # verhindert parallele Logins, wartet stattdessen
 
 jobs:
   login:
     runs-on: ubuntu-latest
     timeout-minutes: 200
-
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v4
 
+      - name: Prüfen, ob heute bereits erfolgreich eingeloggt
+        id: check
+        run: |
+          TODAY=$(TZ="Europe/Berlin" date +%F)
+          if [ -f "last-success.txt" ] && grep -q "$TODAY" last-success.txt; then
+            echo "already_done=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_done=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Zeitfenster prüfen (muss vor 15 Uhr Berlin starten)
+        id: window
+        if: steps.check.outputs.already_done == 'false'
+        run: |
+          HOUR=$(TZ="Europe/Berlin" date +%H)
+          if [ "$HOUR" -lt 8 ] || [ "$HOUR" -ge 15 ]; then
+            echo "in_window=false" >> "$GITHUB_OUTPUT"
+            echo "Außerhalb des zulässigen Startfensters (8-15 Uhr), überspringe."
+          else
+            echo "in_window=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Node.js einrichten
+        if: steps.check.outputs.already_done == 'false' && steps.window.outputs.in_window == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Abhängigkeiten installieren
+        if: steps.check.outputs.already_done == 'false' && steps.window.outputs.in_window == 'true'
         run: npm install playwright
 
       - name: Chromium installieren
+        if: steps.check.outputs.already_done == 'false' && steps.window.outputs.in_window == 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Login-Skript ausführen
+        if: steps.check.outputs.already_done == 'false' && steps.window.outputs.in_window == 'true'
         env:
           LMS_USER: ${{ secrets.LMS_USER }}
           LMS_PASS: ${{ secrets.LMS_PASS }}
-          SESSION_MINUTES: '180' # Bleibt bei 3 Stunden
+          SESSION_MINUTES: '180'
         run: node login.js
+
+      - name: Erfolg vermerken
+        if: steps.check.outputs.already_done == 'false' && steps.window.outputs.in_window == 'true'
+        run: |
+          TZ="Europe/Berlin" date +%F >> last-success.txt
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add last-success.txt
+          git commit -m "Login erfolgreich am $(TZ=Europe/Berlin date +%F)"
+          git push
 
       - name: Screenshots als Nachweis speichern
         if: always()
